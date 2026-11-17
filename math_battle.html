@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATH BATTLE — CART3R.JAILBREAK</title>
+<style>
+:root{color-scheme:dark;--red:#ff344d;--bg:#08090d;--panel:#14151c;--muted:#a6a8b3}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -10%,#40101b 0,#111018 35%,var(--bg) 75%);color:#f7f7fb;font:16px system-ui,Arial;min-height:100vh}
+main{max-width:850px;margin:auto;padding:22px 15px 50px}.brand{font-weight:900;letter-spacing:3px;color:var(--red);font-size:clamp(25px,6vw,42px);text-align:center;margin:12px 0 3px}.sub{text-align:center;color:var(--muted);margin:0 0 22px}
+.card{background:#14151cdd;border:1px solid #652331;border-radius:18px;padding:18px;margin:13px 0;box-shadow:0 8px 30px #0006}
+h2{font-size:18px;margin:0 0 13px;color:#ff6578}label{display:block;color:#c7c8d0;font-size:13px;margin:12px 0 6px}
+input,select,button{font:inherit;border-radius:11px;padding:12px;border:1px solid #393a45;background:#0c0d12;color:white;width:100%}
+button{background:linear-gradient(135deg,#e92240,#9e1429);border:0;font-weight:800;cursor:pointer;margin-top:10px}
+button.secondary{background:#252630;border:1px solid #494b58}button:disabled{opacity:.45;cursor:not-allowed}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hidden{display:none!important}.muted{color:var(--muted);font-size:13px}.big{font-size:clamp(42px,11vw,68px);font-weight:900;text-align:center;margin:12px 0;color:#fff}.timer{text-align:center;color:#ff8291;font-weight:800}.answers{display:grid;grid-template-columns:1fr 1fr;gap:9px}.answers button{margin:0;background:#242631;border:1px solid #4b4d5c}.answers button:active{transform:scale(.98)}
+ul{padding-left:20px}.player{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #30313b}.pill{display:inline-block;border-radius:99px;padding:5px 10px;background:#35131c;color:#ff9aa7;font-size:12px}
+#notice{white-space:pre-wrap;color:#ffb4be;font-size:13px;margin-top:10px}
+footer{text-align:center;color:#747681;font-size:12px;margin-top:20px}
+@media(max-width:520px){.row{grid-template-columns:1fr}.card{padding:15px}}
+</style>
+</head>
+<body><main>
+<div class="brand">MATH BATTLE</div><p class="sub">DESAFIE SEUS AMIGOS • CART3R.JAILBREAK</p>
+<section id="setup" class="card">
+<h2>Entrar na batalha</h2>
+<label>Seu apelido</label><input id="nickname" maxlength="18" placeholder="Ex.: Tiger" autocomplete="nickname">
+<div class="row">
+<div><label>Operações</label><select id="operation"><option value="mix">Todas</option><option value="add">Adição</option><option value="sub">Subtração</option><option value="mul">Multiplicação</option><option value="div">Divisão</option></select></div>
+<div><label>Dificuldade</label><select id="difficulty"><option value="easy">Fácil</option><option value="medium">Média</option><option value="hard">Difícil</option></select></div>
+</div>
+<button id="create">CRIAR SALA</button>
+<div class="row"><input id="roomCode" placeholder="Código da sala" maxlength="6" style="text-transform:uppercase"><button id="join" class="secondary">ENTRAR</button></div>
+<p class="muted">Crie uma sala e compartilhe o link com seus amigos. Todos precisam abrir o mesmo link.</p>
+<div id="notice"></div>
+</section>
+<section id="lobby" class="card hidden">
+<div class="row"><div><span class="pill">SALA</span><div id="codeDisplay" class="big" style="font-size:34px;text-align:left"></div></div><div><span class="pill">STATUS</span><p id="roomStatus">Aguardando jogadores</p></div></div>
+<button id="share" class="secondary">COPIAR LINK DA SALA</button>
+<h2>Jogadores</h2><div id="players"></div>
+<button id="start">COMEÇAR PARTIDA</button>
+<p class="muted">O criador da sala controla o início e as próximas perguntas.</p>
+</section>
+<section id="game" class="card hidden">
+<div class="row"><div><span class="pill" id="roundLabel">RODADA 1</span></div><div class="timer" id="timer">20 segundos</div></div>
+<div class="big" id="question">?</div>
+<div class="answers" id="answers"></div>
+<p id="feedback" class="muted" aria-live="polite"></p>
+<button id="next" class="hidden">PRÓXIMA PERGUNTA</button>
+<h2>Placar</h2><div id="scoreboard"></div>
+</section>
+<section id="finish" class="card hidden"><h2>FIM DE JOGO</h2><div id="winner" class="big"></div><div id="finalScores"></div><button id="back" class="secondary">VOLTAR À SALA</button></section>
+<footer>Jogo educativo • Pontos fictícios • Sem apostas ou dinheiro real</footer>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getDatabase,ref,set,get,update,onValue,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// 1) Cole aqui a configuração do seu projeto Firebase.
+const firebaseConfig = {
+  apiKey: "COLE_SUA_API_KEY",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  databaseURL: "https://SEU_PROJETO-default-rtdb.firebaseio.com",
+  projectId: "SEU_PROJETO",
+  appId: "COLE_SEU_APP_ID"
+};
+const $=id=>document.getElementById(id);
+let db,auth,user,roomId,isHost=false,roomData={},timerHandle=null,answered=false,unsubscribe=null;
+const show=(id)=>$(id).classList.remove("hidden"),hide=(id)=>$(id).classList.add("hidden");
+function msg(t){$("notice").textContent=t}
+function code(){return Math.random().toString(36).slice(2,8).toUpperCase()}
+function makeQuestion(){
+ const op=$("operation").value, dif=$("difficulty").value;
+ let a,b,kind=op==="mix"?["add","sub","mul","div"][Math.floor(Math.random()*4)]:op;
+ const max=dif==="easy"?10:dif==="medium"?30:100;
+ a=1+Math.floor(Math.random()*max);b=1+Math.floor(Math.random()*max);
+ if(kind==="add")return {text:`${a} + ${b}`,answer:a+b};
+ if(kind==="sub"){if(b>a)[a,b]=[b,a];return {text:`${a} − ${b}`,answer:a-b};}
+ if(kind==="mul"){let m=dif==="easy"?10:dif==="medium"?15:25;a=1+Math.floor(Math.random()*m);b=1+Math.floor(Math.random()*m);return {text:`${a} × ${b}`,answer:a*b};}
+ b=1+Math.floor(Math.random()*(dif==="easy"?10: dif==="medium"?15:20));let result=1+Math.floor(Math.random()*(dif==="easy"?10:20));a=b*result;return {text:`${a} ÷ ${b}`,answer:result};
+}
+function optionsFor(answer){
+ const set=new Set([answer]);while(set.size<4){let delta=1+Math.floor(Math.random()*Math.max(4,Math.ceil(Math.abs(answer)*.25)));set.add(Math.max(0,answer+(Math.random()<.5?-delta:delta)));}
+ return [...set].sort(()=>Math.random()-.5);
+}
+function roomRef(){return ref(db,`rooms/${roomId}`)}
+async function enterRoom(id,host=false){
+ roomId=id.toUpperCase();isHost=host;
+ const snap=await get(ref(db,`rooms/${roomId}`));
+ if(!snap.exists()){msg("Sala não encontrada. Confira o código.");return;}
+ roomData=snap.val();
+ await set(ref(db,`rooms/${roomId}/players/${user.uid}`),{name:$("nickname").value.trim()||"Jogador",score:0,joinedAt:Date.now()});
+ $("codeDisplay").textContent=roomId;hide("setup");show("lobby");listenRoom();
+}
+function listenRoom(){
+ if(unsubscribe)unsubscribe();
+ unsubscribe=onValue(roomRef(),snap=>{
+ if(!snap.exists())return;
+ roomData=snap.val();renderPlayers();
+ if(roomData.status==="playing"){hide("lobby");show("game");renderQuestion();}
+ if(roomData.status==="finished"){hide("game");show("finish");renderFinish();}
+ if(roomData.status==="lobby"){hide("game");hide("finish");show("lobby");}
+ });
+}
+function renderPlayers(){
+ const ps=Object.entries(roomData.players||{}).sort((a,b)=>(b[1].score||0)-(a[1].score||0));
+ $("players").innerHTML=ps.map(([id,p])=>`<div class="player"><span>${escapeHtml(p.name)} ${id===roomData.hostUid?"👑":""}</span><b>${p.score||0} pts</b></div>`).join("")||"Aguardando...";
+ $("scoreboard").innerHTML=ps.map(([id,p],i)=>`<div class="player"><span>${i+1}. ${escapeHtml(p.name)}</span><b>${p.score||0} pts</b></div>`).join("");
+ $("start").disabled=!isHost||ps.length<1;
+ $("next").classList.toggle("hidden",!isHost);
+ $("roomStatus").textContent=roomData.status==="playing"?"Partida em andamento":"Aguardando jogadores";
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+async function begin(){
+ const q=makeQuestion(),opts=optionsFor(q.answer);
+ await update(roomRef(),{status:"playing",round:1,question:{...q,options:opts,deadline:Date.now()+20000},roundAnswers:{}});
+}
+function renderQuestion(){
+ const q=roomData.question;if(!q)return;
+ $("roundLabel").textContent=`RODADA ${roomData.round||1}`;$("question").textContent=q.text;
+ answered=!!(roomData.roundAnswers&&roomData.roundAnswers[user.uid]);
+ $("feedback").textContent=answered?"Resposta enviada!": "Escolha uma resposta.";
+ $("answers").innerHTML="";
+ q.options.forEach(n=>{const b=document.createElement("button");b.textContent=n;b.disabled=answered;b.onclick=()=>answer(n);$("answers").appendChild(b);});
+ clearInterval(timerHandle);tick();timerHandle=setInterval(tick,250);
+}
+function tick(){
+ const q=roomData.question;if(!q)return;const left=Math.max(0,Math.ceil((q.deadline-Date.now())/1000));
+ $("timer").textContent=`${left} segundos`;
+ if(left===0){$("answers").querySelectorAll("button").forEach(b=>b.disabled=true);if(isHost)$("next").classList.remove("hidden");}
+}
+async function answer(n){
+ if(answered)return;answered=true;
+ $("answers").querySelectorAll("button").forEach(b=>b.disabled=true);
+ const q=roomData.question,correct=n===q.answer;
+ if(correct)await runTransaction(ref(db,`rooms/${roomId}/players/${user.uid}/score`),v=>(v||0)+10);
+ await set(ref(db,`rooms/${roomId}/roundAnswers/${user.uid}`),{choice:n,correct,round:roomData.round});
+ $("feedback").textContent=correct?"✅ Acertou! +10 pontos":"Resposta registrada. Boa sorte na próxima!";
+}
+async function next(){
+ const round=roomData.round||1;
+ if(round>=10){await update(roomRef(),{status:"finished"});return;}
+ const q=makeQuestion();
+ await update(roomRef(),{round:round+1,question:{...q,options:optionsFor(q.answer),deadline:Date.now()+20000},roundAnswers:null});
+}
+function renderFinish(){
+ const ps=Object.values(roomData.players||{}).sort((a,b)=>(b.score||0)-(a.score||0));
+ $("winner").textContent=ps[0]?`🏆 ${ps[0].name}`:"Fim!";
+ $("finalScores").innerHTML=ps.map((p,i)=>`<div class="player"><span>${i+1}. ${escapeHtml(p.name)}</span><b>${p.score||0} pts</b></div>`).join("");
+}
+async function init(){
+ try{
+ if(firebaseConfig.apiKey.startsWith("COLE")||firebaseConfig.projectId==="SEU_PROJETO"){msg("Falta conectar o Firebase. Siga o guia de configuração abaixo.");return;}
+ const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getDatabase(app);
+ await signInAnonymously(auth);user=auth.currentUser;
+ const params=new URLSearchParams(location.search),shared=params.get("room");
+ if(shared){$("roomCode").value=shared;msg("Link de sala detectado. Digite seu apelido e toque em ENTRAR.");}
+ }catch(e){msg("Erro ao conectar: "+e.message);}
+}
+$("create").onclick=async()=>{
+ if(!user){msg("Configure o Firebase e recarregue a página.");return;}
+ const id=code();roomId=id;isHost=true;
+ await set(ref(db,`rooms/${id}`),{hostUid:user.uid,status:"lobby",round:0,createdAt:serverTimestamp(),players:{},roundAnswers:{}});
+ await enterRoom(id,true);
+};
+$("join").onclick=async()=>{if(!user){msg("Configure o Firebase e recarregue a página.");return;}const id=$("roomCode").value.trim().toUpperCase();if(id.length!==6){msg("Digite o código de 6 caracteres.");return;}await enterRoom(id,false);};
+$("start").onclick=begin;$("next").onclick=next;
+$("share").onclick=async()=>{const url=`${location.origin}${location.pathname}?room=${roomId}`;try{await navigator.clipboard.writeText(url);$("share").textContent="LINK COPIADO!";}catch{$("share").textContent=url;}};
+$("back").onclick=()=>{hide("finish");show("lobby");};
+init();
+</script>
+</body></html>
