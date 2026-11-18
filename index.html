@@ -66,7 +66,21 @@ const firebaseConfig = {
   appId: "1:465008619189:web:8519da8dcde990e09718fc",
   measurementId: "G-29EL4NL8ZP"
 };) Cole aqui a configuração do seu projeto Firebase.
-};
+};const app = initializeApp(firebaseConfig);
+auth = getAuth(app);
+db = getDatabase(app);
+
+signInAnonymously(auth).catch((error) => {
+  console.error("Erro no login:", error);
+  alert("Erro no Firebase: " + error.message);
+});
+
+onAuthStateChanged(auth, (loggedUser) => {
+  if (loggedUser) {
+    user = loggedUser;
+    console.log("Firebase conectado!");
+  }
+});
 const $=id=>document.getElementById(id);
 let db,auth,user,roomId,isHost=false,roomData={},timerHandle=null,answered=false,unsubscribe=null;
 const show=(id)=>$(id).classList.remove("hidden"),hide=(id)=>$(id).classList.add("hidden");
