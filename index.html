@@ -160,8 +160,42 @@ async function init(){
  if(shared){$("roomCode").value=shared;msg("Link de sala detectado. Digite seu apelido e toque em ENTRAR.");}
  }catch(e){msg("Erro ao conectar: "+e.message);}
 }
+
 $("create").onclick=async()=>{
- if(!user){msg("Configure o Firebase e recarregue a página.");return;}
+ try{
+  if(!user){
+   msg("Configure o Firebase e recarregue a página.");
+   return;
+  }
+
+  const id=code();
+  roomId=id;
+  isHost=true;
+
+  const player={
+   name:$("nickname").value.trim()||"Jogador",
+   score:0,
+   joinedAt:Date.now()
+  };
+
+  await set(ref(db,`rooms/${id}`),{
+   hostUid:user.uid,
+   status:"lobby",
+   round:0,
+   createdAt:serverTimestamp(),
+   players:{
+    [user.uid]:player
+   },
+   roundAnswers:{}
+  });
+
+  await enterRoom(id,true);
+
+ }catch(e){
+  msg("Erro ao criar sala: "+e.message);
+ }
+};
+  
  const id=code();roomId=id;isHost=true;
  await set(ref(db,`rooms/${id}`),{hostUid:user.uid,status:"lobby",round:0,createdAt:serverTimestamp(),players:{},roundAnswers:{}});
  await enterRoom(id,true);
